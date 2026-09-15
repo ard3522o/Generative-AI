@@ -1,0 +1,57 @@
+# ==============================
+# LLM PROVIDERS
+# ==============================
+
+openai
+groq
+google-genai
+mistralai
+
+# ==============================
+# LANGCHAIN
+# ==============================
+
+langchain
+langchain-core
+langchain-community
+langchain-openai
+langchain-google-genai
+langchain-groq
+langchain-mistralai
+
+# ==============================
+# ENVIRONMENT VARIABLES
+# ==============================
+
+python-dotenv
+
+# ==============================
+# RAG / DOCUMENT LOADING
+# ==============================
+
+pypdf
+docx2txt
+beautifulsoup4
+
+# ==============================
+# EMBEDDINGS / VECTOR DATABASE
+# ==============================
+
+faiss-cpu
+
+# ==============================
+# DATA / JUPYTER
+# ==============================
+
+numpy
+pandas
+jupyter
+ipykernel
+
+# ==============================
+# HTTP / API
+# ==============================
+
+requests
+httpx
+langchain_huggingface
