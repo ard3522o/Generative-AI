@@ -9,8 +9,8 @@ model = init_chat_model(
     temperature=0.8,
     # max_tokens=100
 )
+prompt = input("You : ")
+result = model.invoke(prompt)
 
-result = model.invoke("Tell me a short poem about AI")
 
-
-print(result.text)
+print("Bot: ",result.text)
