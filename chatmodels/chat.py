@@ -9,9 +9,15 @@ model = init_chat_model(
     model_provider="groq",
     temperature=0.8,
 )
-
+print("press 1 for funny AI agent ")
+print("press 2 for a angry AI agent")
+choice = int(input("Enter  the choice  required: "))
+if choice == 1:
+    mode = 'You are funny and happy ai  agent'
+elif choice == 2:
+    mode = "You are an angry AI agent and sad also"
 messages = [
-    SystemMessage(content="you are a  funny ai agent")
+    SystemMessage(content=mode)
 ]
 
 print("--------- Welcome! Type 0 to exit ---------")
