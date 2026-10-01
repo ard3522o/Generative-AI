@@ -1,34 +1,51 @@
 from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
+from pydantic import BaseModel
+from typing import List,Optional
+from langchain_core.output_parsers import PydanticOutputParser
+
 load_dotenv()
+from langchain_mistralai import ChatMistralAI
 
-from langchain_groq import ChatGroq
 
-model = ChatGroq(model="openai/gpt-oss-120b")
-prompt = ChatPromptTemplate.from_messages(
-    [
-    ("system",
-     """You are an expert movie information assistant.
+model = ChatMistralAI(model = 'mistral-small-2506')
 
-Step 1: Extract everything you can from the provided text.
-Step 2: For any field missing from the text (cast, box office, budget, release year, awards, etc.),
-use your own reliable knowledge of the movie to fill it in.
 
-Rules:
-1. Prefer the text over your own knowledge if they conflict.
-2. Only fill a field from memory if you are confident. Otherwise return null or an empty list. Never invent numbers.
-3. For box office and budget, give the figure with currency and mark it as approximate if unsure.
-4. "cast" = real actors (with role). "characters" = fictional names.
-5. List every field you filled from your own knowledge in "enriched_fields".
-6. Return only the structured output.
-7. Short Summary"""),
-    ("human", 'Movie text:\n"""\n{text}\n"""\n\nExtract and complete the movie information.'),
+
+class Movie(BaseModel):
+    title: str 
+    release_year : Optional[int]
+    genre: List[str]
+    director: Optional[str]
+    cast: List[str]
+    rating: Optional[float]
+    summary: str
+
+
+
+parser = PydanticOutputParser(pydantic_object=Movie)
+
+
+prompt = ChatPromptTemplate.from_messages([
+    ('system',"""
+Extract movie information from the paragraph
+     {format_instructions}
+"""),
+("human","{paragraph}")
 ]
 )
 
-para  = input("Give you paragraph")
+
+
+para = input("Give your paragraph : ")
+
 final_prompt = prompt.invoke(
-    {"text": para}
+    {"paragraph" : para,
+     'format_instructions': parser.get_format_instructions()
+     }
 )
-result = model.invoke(final_prompt)
-print(result.content)
+
+response = model.invoke(final_prompt)
+movie_data = parser.parse(response.content)
+
+print(movie_data)

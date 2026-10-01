@@ -1,144 +1,354 @@
-from typing import List, Optional
-
 import streamlit as st
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field
+
 from langchain_core.prompts import ChatPromptTemplate
+from pydantic import BaseModel
+from typing import List, Optional
+from langchain_core.output_parsers import PydanticOutputParser
 from langchain_groq import ChatGroq
 
+# Load environment variables
 load_dotenv()
 
-st.set_page_config(page_title="Movie Information Chatbot", page_icon="🎬", layout="centered")
 
-
-class CastMember(BaseModel):
-    actor: str = Field(description="Real actor name")
-    character: str = Field(description="Character played")
-
-
-class MovieInfo(BaseModel):
-    title: Optional[str] = Field(None, description="Movie title")
-    director: Optional[str] = Field(None, description="Director name")
-    release_year: Optional[str] = Field(None, description="Release year")
-    genre: Optional[List[str]] = Field(None, description="Genres, or null if unknown")
-    summary: Optional[str] = Field(None, description="Short 2-3 sentence summary")
-    cast: Optional[List[CastMember]] = Field(None, description="Main cast, actors with character names, or null if unknown")
-    budget: Optional[str] = Field(None, description="Budget with currency, plain text like '$165 million (approx.)'")
-    box_office: Optional[str] = Field(None, description="Worldwide box office with currency, plain text like '$677 million (approx.)'")
-    awards: Optional[List[str]] = Field(
-        None,
-        description="Major awards as plain strings, e.g. 'Academy Award - Best Visual Effects (Won)', or null if unknown",
-    )
-    key_facts: Optional[List[str]] = Field(None, description="Important facts about the movie, or null if none")
-    enriched_fields: Optional[List[str]] = Field(
-        None,
-        description="Fields not in the text that were filled from the model's own knowledge, or null if none",
-    )
-
-
-SYSTEM_PROMPT = """You are an expert movie information assistant.
-
-Step 1: Extract everything you can from the provided text.
-Step 2: For any field missing from the text (cast, box office, budget, release year, awards, etc.),
-use your own reliable knowledge of the movie to fill it in.
-
-Rules:
-1. Prefer the text over your own knowledge if they conflict.
-2. Only fill a field from memory if you are confident. Otherwise return null or an empty list. Never invent numbers.
-3. For box office and budget, give the figure with currency and mark it as approximate if unsure.
-4. Use plain text only in every field: no markdown, no backticks, no special formatting.
-5. List every field you filled from your own knowledge in "enriched_fields".
-6. Keep the summary short (2-3 sentences)."""
-
-prompt = ChatPromptTemplate.from_messages(
-    [
-        ("system", SYSTEM_PROMPT),
-        ("human", 'Movie text:\n"""\n{text}\n"""\n\nExtract and complete the movie information.'),
-    ]
+# -----------------------------
+# Page Configuration
+# -----------------------------
+st.set_page_config(
+    page_title="Movie Information Extractor",
+    page_icon="🎬",
+    layout="wide"
 )
 
 
-def render_movie(info: dict):
-    st.subheader(info.get("title") or "Unknown movie")
+# -----------------------------
+# Custom CSS
+# -----------------------------
+st.markdown("""
+<style>
 
-    meta = []
-    if info.get("director"):
-        meta.append(f"🎥 Directed by **{info['director']}**")
-    if info.get("genre"):
-        meta.append("🎭 " + ", ".join(info["genre"]))
-    if meta:
-        st.markdown("  \n".join(meta))
+.main {
+    background-color: #f5f7fb;
+}
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Release year", info.get("release_year") or "N/A")
-    c2.metric("Budget", info.get("budget") or "N/A")
-    c3.metric("Box office", info.get("box_office") or "N/A")
+.title {
+    text-align: center;
+    font-size: 42px;
+    font-weight: 700;
+    margin-bottom: 5px;
+}
 
-    if info.get("summary"):
-        st.markdown("**Summary**")
-        st.write(info["summary"])
+.subtitle {
+    text-align: center;
+    color: #666;
+    font-size: 18px;
+    margin-bottom: 30px;
+}
 
-    if info.get("cast"):
-        st.markdown("**Cast**")
-        st.dataframe(
-            [{"Actor": c["actor"], "Character": c["character"]} for c in info["cast"]],
-            hide_index=True,
-            use_container_width=True,
+.movie-card {
+    padding: 25px;
+    border-radius: 15px;
+    background-color: white;
+    box-shadow: 0px 4px 15px rgba(0,0,0,0.08);
+    margin-top: 20px;
+}
+
+.movie-title {
+    font-size: 30px;
+    font-weight: 700;
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+
+# -----------------------------
+# Pydantic Model
+# -----------------------------
+class Movie(BaseModel):
+
+    title: str
+
+    release_year: Optional[int] = None
+
+    genre: List[str]
+
+    director: Optional[str] = None
+
+    cast: List[str]
+
+    rating: Optional[float] = None
+
+    summary: str
+
+
+# -----------------------------
+# Output Parser
+# -----------------------------
+parser = PydanticOutputParser(
+    pydantic_object=Movie
+)
+
+
+# -----------------------------
+# Groq Model
+# -----------------------------
+model = ChatGroq(
+    model="openai/gpt-oss-20b",
+    temperature=0
+)
+
+
+# -----------------------------
+# Prompt
+# -----------------------------
+prompt = ChatPromptTemplate.from_messages([
+
+    (
+        "system",
+        """
+        Extract movie information from the paragraph.
+
+        {format_instructions}
+        """
+    ),
+
+    (
+        "human",
+        "{paragraph}"
+    )
+])
+
+
+# -----------------------------
+# UI
+# -----------------------------
+
+st.markdown(
+    '<div class="title">🎬 Movie Information Extractor</div>',
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    '<div class="subtitle">'
+    'Extract structured movie information using Groq + LangChain'
+    '</div>',
+    unsafe_allow_html=True
+)
+
+
+# -----------------------------
+# Input
+# -----------------------------
+
+st.subheader("📝 Enter Movie Paragraph")
+
+paragraph = st.text_area(
+    "Movie Description",
+
+    placeholder=(
+        "Example: Interstellar is a 2014 science fiction film "
+        "directed by Christopher Nolan. It stars Matthew McConaughey, "
+        "Anne Hathaway and Jessica Chastain..."
+    ),
+
+    height=180
+)
+
+
+# -----------------------------
+# Button
+# -----------------------------
+
+if st.button(
+    "🔍 Extract Movie Information",
+    use_container_width=True
+):
+
+    if not paragraph.strip():
+
+        st.warning(
+            "⚠️ Please enter a movie paragraph first."
         )
 
-    if info.get("awards"):
-        st.markdown("**Awards**")
-        for a in info["awards"]:
-            st.markdown(f"- {a}")
+    else:
 
-    if info.get("key_facts"):
-        st.markdown("**Key facts**")
-        for f in info["key_facts"]:
-            st.markdown(f"- {f}")
+        with st.spinner(
+            "🤖 Extracting movie information..."
+        ):
 
-    if info.get("enriched_fields"):
-        st.caption(
-            "Filled from AI knowledge (not in your text): "
-            + ", ".join(info["enriched_fields"])
-            + ". Figures may be approximate."
-        )
+            try:
+
+                # Create prompt
+                final_prompt = prompt.invoke({
+
+                    "paragraph": paragraph,
+
+                    "format_instructions":
+                        parser.get_format_instructions()
+
+                })
 
 
-st.title("🎬 Movie Information Chatbot")
+                # Call Groq
+                response = model.invoke(
+                    final_prompt
+                )
 
-if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {
-            "role": "assistant",
-            "type": "text",
-            "content": "Hi! Paste a paragraph about any movie and I'll extract the name, cast, genre, box office and more.",
-        }
-    ]
 
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        if msg["type"] == "movie":
-            render_movie(msg["content"])
-        else:
-            st.markdown(msg["content"])
+                # Parse response
+                movie_data = parser.parse(
+                    response.content
+                )
 
-user_input = st.chat_input("Paste your movie paragraph here...")
 
-if user_input:
-    st.session_state.messages.append({"role": "user", "type": "text", "content": user_input})
-    with st.chat_message("user"):
-        st.markdown(user_input)
+                st.success(
+                    "✅ Movie information extracted successfully!"
+                )
 
-    with st.chat_message("assistant"):
-        try:
-            model = ChatGroq(model="openai/gpt-oss-120b", temperature=0)
-            chain = prompt | model.with_structured_output(MovieInfo)
-            with st.spinner("Extracting..."):
-                result = chain.invoke({"text": user_input})
-            data = result.model_dump()
-            render_movie(data)
-            st.session_state.messages.append({"role": "assistant", "type": "movie", "content": data})
-        except Exception as e:
-            err = f"Something went wrong: {e}"
-            st.error(err)
-            st.session_state.messages.append({"role": "assistant", "type": "text", "content": err})
+
+                # -----------------------------
+                # Movie Card
+                # -----------------------------
+
+                st.markdown(
+                    '<div class="movie-card">',
+                    unsafe_allow_html=True
+                )
+
+
+                st.markdown(
+                    f'<div class="movie-title">'
+                    f'🎬 {movie_data.title}'
+                    f'</div>',
+                    unsafe_allow_html=True
+                )
+
+
+                st.divider()
+
+
+                # -----------------------------
+                # Information Columns
+                # -----------------------------
+
+                col1, col2, col3 = st.columns(3)
+
+
+                with col1:
+
+                    st.markdown(
+                        "### 📅 Release Year"
+                    )
+
+                    st.write(
+                        movie_data.release_year
+                        if movie_data.release_year
+                        else "Not available"
+                    )
+
+
+                with col2:
+
+                    st.markdown(
+                        "### ⭐ Rating"
+                    )
+
+                    st.write(
+                        movie_data.rating
+                        if movie_data.rating
+                        else "Not available"
+                    )
+
+
+                with col3:
+
+                    st.markdown(
+                        "### 🎭 Genre"
+                    )
+
+                    st.write(
+                        ", ".join(movie_data.genre)
+                        if movie_data.genre
+                        else "Not available"
+                    )
+
+
+                st.divider()
+
+
+                # -----------------------------
+                # Director
+                # -----------------------------
+
+                st.markdown(
+                    "### 🎥 Director"
+                )
+
+                st.write(
+                    movie_data.director
+                    if movie_data.director
+                    else "Not available"
+                )
+
+
+                # -----------------------------
+                # Cast
+                # -----------------------------
+
+                st.markdown(
+                    "### 👥 Cast"
+                )
+
+                if movie_data.cast:
+
+                    st.write(
+                        ", ".join(movie_data.cast)
+                    )
+
+                else:
+
+                    st.write(
+                        "Not available"
+                    )
+
+
+                # -----------------------------
+                # Summary
+                # -----------------------------
+
+                st.markdown(
+                    "### 📖 Summary"
+                )
+
+                st.write(
+                    movie_data.summary
+                )
+
+
+                st.markdown(
+                    "</div>",
+                    unsafe_allow_html=True
+                )
+
+
+                # -----------------------------
+                # JSON
+                # -----------------------------
+
+                with st.expander(
+                    "🔧 View Structured JSON"
+                ):
+
+                    st.json(
+                        movie_data.model_dump()
+                    )
+
+
+            except Exception as e:
+
+                st.error(
+                    "❌ Something went wrong."
+                )
+
+                st.exception(e)
